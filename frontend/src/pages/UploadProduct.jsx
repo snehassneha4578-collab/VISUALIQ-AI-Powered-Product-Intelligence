@@ -358,6 +358,22 @@ function UploadProduct() {
       return;
     }
 
+    const currentProductName =
+      analysis?.productName ||
+      result?.productName ||
+      productName ||
+      "";
+
+    if (
+      !currentProductName ||
+      currentProductName.toLowerCase().includes("not confidently identified")
+    ) {
+      setError(
+        "AI product identification is required before publishing to AWS."
+      );
+      return;
+    }
+
     setAwsPublishing(true);
     setAwsPublishResult(null);
     setError("");
