@@ -1,7 +1,7 @@
 ﻿import React, { useRef, useState } from "react";
 import "./UploadProduct.css";
 
-const API_URL = "http://localhost:5000";
+const API_URL = "https://visualiq-ai-powered-product-intelligence.onrender.com"
 
 const assetConfig = [
   {
@@ -2216,6 +2216,7 @@ function UploadProduct() {
 }
 
 export default UploadProduct;
+
 
 
 
