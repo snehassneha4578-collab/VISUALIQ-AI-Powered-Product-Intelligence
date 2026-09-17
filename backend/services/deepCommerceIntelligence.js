@@ -1,27 +1,212 @@
 ﻿function buildDeepCommerceIntelligence(product, visualScore) {
 
-    const name = product?.name || product?.productName || "Product";
-    const category = (product?.category || "general product").toLowerCase();
+    const name =
+        product?.name ||
+        product?.productName ||
+        "Product";
+
+    const category =
+        product?.category ||
+        "general product";
+
+    const ai =
+        product?.aiAnalysis;
 
     const score =
         typeof visualScore === "number"
             ? visualScore
-            : Number(visualScore?.overallScore || 5);
+            : Number(
+                visualScore?.overallScore || 5
+            );
 
-    const normalized = Math.max(0, Math.min(10, score));
+    const normalized =
+        Math.max(
+            0,
+            Math.min(10, score)
+        );
+
+    /*
+     * AI-POWERED DEEP COMMERCE
+     *
+     * When Gemini analysis is available,
+     * use the actual AI-generated intelligence.
+     */
+
+    if (
+        ai &&
+        ai.available === true
+    ) {
+
+        return {
+
+            engine:
+                "VISUALIQ AI Deep Commerce Intelligence",
+
+            source:
+                "Gemini Visual Commerce Intelligence",
+
+            available:
+                true,
+
+            product: {
+                name:
+                    ai.productName ||
+                    name,
+
+                category:
+                    ai.category ||
+                    category,
+
+                subCategory:
+                    ai.subCategory ||
+                    ""
+            },
+
+            targetAudience:
+                ai.targetAudience || {
+                    primary:
+                        "Online shoppers",
+
+                    secondary:
+                        "Mobile-first commerce consumers",
+
+                    purchaseMotivation:
+                        []
+                },
+
+            brandPositioning:
+                ai.brandPositioning || {
+                    position:
+                        "Digital commerce product",
+
+                    personality:
+                        [],
+
+                    perceivedTier:
+                        "Mid-market"
+                },
+
+            visualStrengths:
+                ai.visualStrengths ||
+                [],
+
+            visualWeaknesses:
+                ai.visualWeaknesses ||
+                [],
+
+            marketingIntelligence:
+                ai.marketingIntelligence || {
+                    bestMarketingAngle:
+                        `Visual presentation of ${name}`,
+
+                    campaignConcept:
+                        `Visual-first ${name} campaign`,
+
+                    recommendedMessage:
+                        `Discover ${name}.`,
+
+                    callToAction:
+                        "Explore Product",
+
+                    contentIdeas:
+                        []
+                },
+
+            platformStrategy:
+                ai.platformStrategy || {
+                    instagram:
+                        "Use strong product-focused visual content.",
+
+                    marketplace:
+                        "Use the clearest product image.",
+
+                    website:
+                        "Use the product as the primary visual focus.",
+
+                    shortVideo:
+                        "Show the product through a concise visual sequence."
+                },
+
+            commerceCopy:
+                ai.commerceCopy || {
+                    productTitle:
+                        name,
+
+                    shortDescription:
+                        `Discover ${name} through a clear product presentation.`,
+
+                    bulletPoints:
+                        [],
+
+                    socialCaption:
+                        `Discover ${name}.`,
+
+                    adHeadline:
+                        `Discover ${name}`,
+
+                    adDescription:
+                        `Explore ${name} through a polished visual commerce experience.`
+                },
+
+            improvementRecommendations:
+                ai.improvementRecommendations ||
+                [],
+
+            visualDNA:
+                ai.visualDNA || {
+                    mood:
+                        [],
+
+                    style:
+                        [],
+
+                    dominantColors:
+                        [],
+
+                    brandKeywords:
+                        []
+                },
+
+            creativeStrategies:
+                ai.creativeStrategies ||
+                [],
+
+            overallScore:
+                Number(
+                    (
+                        ai.overallScore ??
+                        normalized
+                    ).toFixed(1)
+                )
+        };
+    }
+
+    /*
+     * DETERMINISTIC FALLBACK
+     *
+     * Used when Gemini is unavailable.
+     */
+
+    const normalizedCategory =
+        category.toLowerCase();
 
     let audience;
     let angle;
     let positioning;
 
     if (
-        category.includes("watch") ||
-        category.includes("jewelry") ||
-        category.includes("accessory")
+        normalizedCategory.includes("watch") ||
+        normalizedCategory.includes("jewelry") ||
+        normalizedCategory.includes("accessory")
     ) {
+
         audience = {
-            primary: "Style-conscious consumers",
-            secondary: "Gift buyers and lifestyle shoppers",
+            primary:
+                "Style-conscious consumers",
+
+            secondary:
+                "Gift buyers and lifestyle shoppers",
+
             purchaseMotivation: [
                 "Visual appeal",
                 "Personal style",
@@ -29,25 +214,37 @@
             ]
         };
 
-        angle = "Premium visual presentation and everyday style";
+        angle =
+            "Premium visual presentation and everyday style";
 
         positioning = {
-            position: "Style-focused lifestyle product",
+            position:
+                "Style-focused lifestyle product",
+
             personality: [
                 "Elegant",
                 "Modern",
                 "Aspirational"
             ],
-            perceivedTier: normalized >= 8 ? "Premium" : "Mid-market"
+
+            perceivedTier:
+                normalized >= 8
+                    ? "Premium"
+                    : "Mid-market"
         };
 
     } else if (
-        category.includes("shoe") ||
-        category.includes("footwear")
+        normalizedCategory.includes("shoe") ||
+        normalizedCategory.includes("footwear")
     ) {
+
         audience = {
-            primary: "Fashion and lifestyle shoppers",
-            secondary: "Active consumers and online footwear buyers",
+            primary:
+                "Fashion and lifestyle shoppers",
+
+            secondary:
+                "Active consumers and online footwear buyers",
+
             purchaseMotivation: [
                 "Style",
                 "Visual appeal",
@@ -55,27 +252,39 @@
             ]
         };
 
-        angle = "Style-led product discovery with strong visual presentation";
+        angle =
+            "Style-led product discovery with strong visual presentation";
 
         positioning = {
-            position: "Modern lifestyle footwear",
+            position:
+                "Modern lifestyle footwear",
+
             personality: [
                 "Contemporary",
                 "Energetic",
                 "Practical"
             ],
-            perceivedTier: normalized >= 8 ? "Premium" : "Accessible"
+
+            perceivedTier:
+                normalized >= 8
+                    ? "Premium"
+                    : "Accessible"
         };
 
     } else if (
-        category.includes("perfume") ||
-        category.includes("fragrance") ||
-        category.includes("cosmetic") ||
-        category.includes("beauty")
+        normalizedCategory.includes("perfume") ||
+        normalizedCategory.includes("fragrance") ||
+        normalizedCategory.includes("cosmetic") ||
+        normalizedCategory.includes("beauty")
     ) {
+
         audience = {
-            primary: "Beauty and lifestyle consumers",
-            secondary: "Gift buyers and premium-product shoppers",
+            primary:
+                "Beauty and lifestyle consumers",
+
+            secondary:
+                "Gift buyers and premium-product shoppers",
+
             purchaseMotivation: [
                 "Aesthetic appeal",
                 "Self-expression",
@@ -83,22 +292,34 @@
             ]
         };
 
-        angle = "Aspirational visual storytelling and lifestyle appeal";
+        angle =
+            "Aspirational visual storytelling and lifestyle appeal";
 
         positioning = {
-            position: "Lifestyle and beauty-oriented product",
+            position:
+                "Lifestyle and beauty-oriented product",
+
             personality: [
                 "Elegant",
                 "Aspirational",
                 "Refined"
             ],
-            perceivedTier: normalized >= 8 ? "Premium" : "Mid-market"
+
+            perceivedTier:
+                normalized >= 8
+                    ? "Premium"
+                    : "Mid-market"
         };
 
     } else {
+
         audience = {
-            primary: "Online shoppers",
-            secondary: "Mobile-first commerce consumers",
+            primary:
+                "Online shoppers",
+
+            secondary:
+                "Mobile-first commerce consumers",
+
             purchaseMotivation: [
                 "Product appearance",
                 "Convenience",
@@ -106,43 +327,59 @@
             ]
         };
 
-        angle = "Clear visual presentation designed for confident online discovery";
+        angle =
+            "Clear visual presentation designed for confident online discovery";
 
         positioning = {
-            position: "Digital commerce product",
+            position:
+                "Digital commerce product",
+
             personality: [
                 "Modern",
                 "Accessible",
                 "Practical"
             ],
-            perceivedTier: normalized >= 8 ? "Premium" : "Mid-market"
+
+            perceivedTier:
+                normalized >= 8
+                    ? "Premium"
+                    : "Mid-market"
         };
     }
 
     const strengths = [];
 
     if (normalized >= 7) {
-        strengths.push("Strong overall visual commerce potential");
+        strengths.push(
+            "Strong overall visual commerce potential"
+        );
     }
 
-    strengths.push("Product is clearly identifiable");
-    strengths.push("Suitable for multi-channel visual delivery");
+    strengths.push(
+        "Product is clearly identifiable"
+    );
 
-    if (normalized >= 8) {
-        strengths.push("Strong potential for premium positioning");
-    }
+    strengths.push(
+        "Suitable for multi-channel visual delivery"
+    );
 
     const weaknesses = [];
 
     if (normalized < 7) {
-        weaknesses.push("Visual presentation could be strengthened for stronger conversion potential");
+        weaknesses.push(
+            "Visual presentation could be strengthened for stronger conversion potential"
+        );
     }
 
     if (normalized < 8) {
-        weaknesses.push("Additional creative refinement could improve perceived product value");
+        weaknesses.push(
+            "Additional creative refinement could improve perceived product value"
+        );
     }
 
-    weaknesses.push("Lifestyle context could strengthen emotional product storytelling");
+    weaknesses.push(
+        "Lifestyle context could strengthen emotional product storytelling"
+    );
 
     const improvementRecommendations = [
         "Create a stronger lifestyle-oriented hero composition",
@@ -159,57 +396,85 @@
     ];
 
     return {
-        engine: "VISUALIQ Deep Commerce Intelligence",
-        source: "Deterministic Visual Commerce Engine",
-        available: true,
+
+        engine:
+            "VISUALIQ Deep Commerce Intelligence",
+
+        source:
+            "Deterministic Visual Commerce Engine",
+
+        available:
+            true,
 
         product: {
             name,
             category
         },
 
-        targetAudience: audience,
+        targetAudience:
+            audience,
 
-        brandPositioning: positioning,
+        brandPositioning:
+            positioning,
 
-        visualStrengths: strengths,
+        visualStrengths:
+            strengths,
 
-        visualWeaknesses: weaknesses,
+        visualWeaknesses:
+            weaknesses,
 
         marketingIntelligence: {
-            bestMarketingAngle: angle,
+
+            bestMarketingAngle:
+                angle,
+
             campaignConcept:
                 `Visual-first ${name} commerce campaign`,
+
             recommendedMessage:
                 `Discover ${name} through a clear, polished and commerce-ready visual experience.`,
-            callToAction: "Explore Product",
+
+            callToAction:
+                "Explore Product",
+
             contentIdeas
         },
 
         platformStrategy: {
+
             instagram:
                 "Use visually strong square and portrait creatives with concise lifestyle-focused messaging.",
+
             marketplace:
                 "Lead with the clearest product image and concise benefit-oriented copy.",
+
             website:
                 "Use the optimized hero asset with strong product hierarchy and clear CTA.",
+
             shortVideo:
                 "Show the product through a fast visual sequence highlighting appearance and key visible details."
         },
 
         commerceCopy: {
-            productTitle: name,
+
+            productTitle:
+                name,
+
             shortDescription:
                 `A visually presented ${category} designed for modern digital commerce.`,
+
             bulletPoints: [
                 "Clear product-focused presentation",
                 "Multi-channel commerce-ready assets",
                 "Optimized for digital discovery"
             ],
+
             socialCaption:
                 `Discover ${name}. Designed to stand out across today's visual-first shopping experience.`,
+
             adHeadline:
                 `Discover ${name}`,
+
             adDescription:
                 "Bring the product into focus with a polished visual commerce experience."
         },
@@ -217,13 +482,19 @@
         improvementRecommendations,
 
         visualDNA: {
-            mood: positioning.personality,
+
+            mood:
+                positioning.personality,
+
             style: [
                 "Clean",
                 "Commerce-focused",
                 "Visual-first"
             ],
-            dominantColors: [],
+
+            dominantColors:
+                [],
+
             brandKeywords: [
                 "Visual Commerce",
                 "Modern",
@@ -233,24 +504,54 @@
         },
 
         creativeStrategies: [
+
             {
-                strategy: "Clean Product Focus",
-                reason: "Maximize product visibility and reduce visual distraction.",
-                score: Math.min(10, normalized + 0.8)
+                strategy:
+                    "Clean Product Focus",
+
+                reason:
+                    "Maximize product visibility and reduce visual distraction.",
+
+                score:
+                    Math.min(
+                        10,
+                        normalized + 0.8
+                    )
             },
+
             {
-                strategy: "Lifestyle Storytelling",
-                reason: "Add emotional context around the product.",
-                score: Math.min(10, normalized + 0.4)
+                strategy:
+                    "Lifestyle Storytelling",
+
+                reason:
+                    "Add emotional context around the product.",
+
+                score:
+                    Math.min(
+                        10,
+                        normalized + 0.4
+                    )
             },
+
             {
-                strategy: "Social Discovery",
-                reason: "Adapt the product for visual-first social browsing.",
-                score: Math.min(10, normalized + 0.6)
+                strategy:
+                    "Social Discovery",
+
+                reason:
+                    "Adapt the product for visual-first social browsing.",
+
+                score:
+                    Math.min(
+                        10,
+                        normalized + 0.6
+                    )
             }
         ],
 
-        overallScore: Number(normalized.toFixed(1))
+        overallScore:
+            Number(
+                normalized.toFixed(1)
+            )
     };
 }
 

@@ -1,14 +1,14 @@
-import React, { useRef, useState } from "react";
+﻿import React, { useRef, useState } from "react";
 import "./UploadProduct.css";
 
-const API_URL = "https://tales-chair-examining-sit.trycloudflare.com";
+const API_URL = "http://localhost:5000";
 
 const assetConfig = [
   {
     key: "original",
     name: "Original",
     platform: "MASTER ASSET",
-    size: "1960 × 1960"
+    size: "1960  1960"
   },
   {
     key: "optimized",
@@ -20,31 +20,31 @@ const assetConfig = [
     key: "socialSquare",
     name: "Social Square",
     platform: "SOCIAL",
-    size: "1080 × 1080"
+    size: "1080  1080"
   },
   {
     key: "socialPortrait",
     name: "Social Portrait",
     platform: "SOCIAL FEED",
-    size: "1080 × 1350"
+    size: "1080  1350"
   },
   {
     key: "story",
     name: "Story",
     platform: "MOBILE STORY",
-    size: "1080 × 1920"
+    size: "1080  1920"
   },
   {
     key: "websiteHero",
     name: "Website Hero",
     platform: "STOREFRONT",
-    size: "1600 × 900"
+    size: "1600  900"
   },
   {
     key: "marketplace",
     name: "Marketplace",
     platform: "COMMERCE",
-    size: "1200 × 1200"
+    size: "1200  1200"
   }
 ];
 
@@ -57,6 +57,10 @@ function UploadProduct() {
   const [aiProcessing, setAiProcessing] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+
+  // AWS ARTICLE PUBLISHING
+  const [awsPublishing, setAwsPublishing] = useState(false);
+  const [awsPublishResult, setAwsPublishResult] = useState(null);
 
   const handleFile = (selectedFile) => {
     if (!selectedFile) return;
@@ -71,6 +75,7 @@ function UploadProduct() {
     setPreview(URL.createObjectURL(selectedFile));
     setResult(null);
     setAiProcessing(false);
+    setAwsPublishResult(null);
   };
 
   const handleInputChange = (event) => {
@@ -110,6 +115,7 @@ function UploadProduct() {
 
         const data = await response.json();
 
+
         if (data.status === "complete" && data.analysis) {
           setResult((currentResult) => {
             if (!currentResult) return currentResult;
@@ -120,6 +126,9 @@ function UploadProduct() {
                 ...data.analysis,
                 available: true
               },
+              deepCommerceIntelligence:
+                data.deepCommerceIntelligence ||
+                currentResult.deepCommerceIntelligence,
               aiStatus: "complete"
             };
           });
@@ -164,9 +173,95 @@ function UploadProduct() {
     );
   };
 
+  /*
+   * MEDIA STATUS POLLING
+   *
+   * Cloudinary and AWS S3 now run in the background.
+   */
+  const pollMediaResult = async (jobId) => {
+    if (!jobId) return;
+
+    const maxAttempts = 30;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await fetch(
+          `${API_URL}/api/media-status/${jobId}`
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            "Media status request failed."
+          );
+        }
+
+        const data = await response.json();
+
+
+        if (data.status === "complete") {
+          setResult((currentResult) => {
+            if (!currentResult) return currentResult;
+
+            return {
+              ...currentResult,
+              s3Original:
+                data.s3Original || null,
+              visualAssets:
+                data.visualAssets || null,
+              mediaStatus:
+                "complete"
+            };
+          });
+
+          console.log(
+            "VISUALIQ: Cloudinary and S3 assets received."
+          );
+
+          return;
+        }
+
+        if (data.status === "error") {
+          console.error(
+            "VISUALIQ media processing error:",
+            data.error
+          );
+
+          setResult((currentResult) => {
+            if (!currentResult) return currentResult;
+
+            return {
+              ...currentResult,
+              mediaStatus:
+                "error"
+            };
+          });
+
+          return;
+        }
+      } catch (mediaError) {
+        console.error(
+          "VISUALIQ media status error:",
+          mediaError
+        );
+
+        return;
+      }
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, 1000)
+      );
+    }
+
+    console.log(
+      "VISUALIQ: Media polling timeout."
+    );
+  };
+
   const handleUpload = async () => {
     if (!file) {
-      setError("Please upload a product image first.");
+      setError(
+        "Please upload a product image first."
+      );
       return;
     }
 
@@ -174,22 +269,33 @@ function UploadProduct() {
     setError("");
     setResult(null);
     setAiProcessing(false);
+    setAwsPublishResult(null);
 
     try {
       const formData = new FormData();
 
-      formData.append("product", file);
+      formData.append(
+        "image",
+        file
+      );
 
-      const response = await fetch(`${API_URL}/api/upload`, {
-        method: "POST",
-        body: formData
-      });
+      const response = await fetch(
+        `${API_URL}/api/upload`,
+        {
+          method: "POST",
+          body: formData
+        }
+      );
 
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
         throw new Error(
-          data.error || "Product processing failed."
+          data.error ||
+            "Product processing failed."
         );
       }
 
@@ -199,15 +305,26 @@ function UploadProduct() {
 
       setTimeout(() => {
         document
-          .getElementById("intelligence-section")
+          .getElementById(
+            "intelligence-section"
+          )
           ?.scrollIntoView({
             behavior: "smooth"
           });
       }, 100);
 
       if (data.aiJobId) {
-        pollAIResult(data.aiJobId);
+        pollAIResult(
+          data.aiJobId
+        );
       }
+
+      if (data.mediaJobId) {
+        pollMediaResult(
+          data.mediaJobId
+        );
+      }
+
     } catch (uploadError) {
       console.error(
         "VISUALIQ upload error:",
@@ -224,18 +341,223 @@ function UploadProduct() {
     }
   };
 
-  const analysis = result?.aiAnalysis;
-  const visualScore = result?.visualScore;
-  const visualAssets = result?.visualAssets;
-
   /*
-   * NEW:
-   * Deep Commerce Intelligence returned by backend.
+   * ======================================================
+   * AWS S3 ARTICLE PUBLISHING
+   * ======================================================
    *
-   * This is deterministic fallback intelligence when
-   * Gemini is unavailable, and can later be replaced/
-   * supplemented by real Gemini intelligence.
+   * Creates a real article from the generated VISUALIQ
+   * commerce intelligence and sends it to the backend.
    */
+
+  const handlePublishToAWS = async () => {
+    if (!result) {
+      setError(
+        "Analyze a product before publishing an article."
+      );
+      return;
+    }
+
+    setAwsPublishing(true);
+    setAwsPublishResult(null);
+    setError("");
+
+    try {
+      const slug =
+        `${productName}-${Date.now()}`
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "");
+
+      const title =
+        commerceCopy?.productTitle ||
+        `${productName}  VISUALIQ Product Intelligence`;
+
+      const articleContent = `
+        <p>
+          ${description}
+        </p>
+
+        <h2>Commerce Readiness</h2>
+
+        <p>
+          ${Number(commerceScore).toFixed(1)}/10
+        </p>
+
+        <h2>Visual Intelligence</h2>
+
+        <ul>
+          <li>
+            Visual Quality:
+            ${visualScore?.visualQuality ?? "N/A"}/10
+          </li>
+
+          <li>
+            Brand Potential:
+            ${visualScore?.brandPotential ?? "N/A"}/10
+          </li>
+
+          <li>
+            Social Readiness:
+            ${visualScore?.socialReadiness ?? "N/A"}/10
+          </li>
+
+          <li>
+            Commerce Readiness:
+            ${visualScore?.commerceReadiness ?? "N/A"}/10
+          </li>
+        </ul>
+
+        <h2>Commerce Strategy</h2>
+
+        <p>
+          <strong>Target Audience:</strong>
+          ${audience?.primary || "Online shoppers"}
+        </p>
+
+        <p>
+          <strong>Secondary Audience:</strong>
+          ${audience?.secondary || "Digital commerce consumers"}
+        </p>
+
+        <p>
+          <strong>Brand Positioning:</strong>
+          ${positioning?.position || "Digital commerce product"}
+        </p>
+
+        <p>
+          <strong>Perceived Tier:</strong>
+          ${positioning?.perceivedTier || "Mid-market"}
+        </p>
+
+        ${
+          marketing?.bestMarketingAngle
+            ? `
+              <h2>Marketing Intelligence</h2>
+
+              <p>
+                <strong>Marketing Angle:</strong>
+                ${marketing.bestMarketingAngle}
+              </p>
+
+              <p>
+                ${marketing.recommendedMessage || ""}
+              </p>
+
+              <p>
+                <strong>Campaign:</strong>
+                ${marketing.campaignConcept || ""}
+              </p>
+
+              <p>
+                <strong>Call to Action:</strong>
+                ${marketing.callToAction || ""}
+              </p>
+            `
+            : ""
+        }
+
+        ${
+          commerceCopy?.bulletPoints?.length
+            ? `
+              <h2>Commerce Highlights</h2>
+
+              <ul>
+                ${commerceCopy.bulletPoints
+                  .map(
+                    (item) =>
+                      `<li>${item}</li>`
+                  )
+                  .join("")}
+              </ul>
+            `
+            : ""
+        }
+
+        ${
+          visualDNA?.brandKeywords?.length
+            ? `
+              <h2>Brand Keywords</h2>
+
+              <p>
+                ${visualDNA.brandKeywords.join(", ")}
+              </p>
+            `
+            : ""
+        }
+
+        <hr>
+
+        <h2>About VISUALIQ</h2>
+
+        <p>
+          VISUALIQ transforms one product image into
+          visual intelligence, commerce strategy and
+          commerce-ready digital assets.
+        </p>
+      `;
+
+      const response = await fetch(
+        `${API_URL}/api/publishing/aws/publish`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+          body: JSON.stringify({
+            slug,
+            title,
+            productName,
+            content: articleContent
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            "AWS article publishing failed."
+        );
+      }
+
+      setAwsPublishResult(data);
+
+      console.log(
+        "VISUALIQ: Article published to AWS S3.",
+        data
+      );
+
+    } catch (publishError) {
+      console.error(
+        "VISUALIQ AWS publishing error:",
+        publishError
+      );
+
+      setError(
+        publishError.message ||
+          "Unable to publish article to AWS."
+      );
+
+    } finally {
+      setAwsPublishing(false);
+    }
+  };
+
+  const analysis =
+    result?.aiAnalysis;
+
+  const visualScore =
+    result?.visualScore;
+
+  const visualAssets =
+    result?.visualAssets;
+
   const deepCommerce =
     result?.deepCommerceIntelligence;
 
@@ -244,15 +566,17 @@ function UploadProduct() {
     "VISUALIQ Commerce Intelligence Fallback";
 
   const aiAvailable =
-    analysis?.available === true && !isFallback;
+    analysis?.available === true &&
+    !isFallback;
 
-  const analysisMode = aiAvailable
-    ? "AI ACTIVE"
-    : isFallback
-      ? aiProcessing
-        ? "AI PROCESSING"
-        : "VISUAL ENGINE"
-      : "READY";
+  const analysisMode =
+    aiAvailable
+      ? "AI ACTIVE"
+      : isFallback
+        ? aiProcessing
+          ? "AI PROCESSING"
+          : "VISUAL ENGINE"
+        : "READY";
 
   const commerceScore =
     visualScore?.commerceReadiness ??
@@ -278,26 +602,30 @@ function UploadProduct() {
   const metrics = [
     {
       label: "Visual Quality",
-      value: visualScore?.visualQuality,
-      icon: "✦",
+      value:
+        visualScore?.visualQuality,
+      icon: "",
       className: "purple"
     },
     {
       label: "Brand Potential",
-      value: visualScore?.brandPotential,
-      icon: "◆",
+      value:
+        visualScore?.brandPotential,
+      icon: "",
       className: "pink"
     },
     {
       label: "Social Readiness",
-      value: visualScore?.socialReadiness,
-      icon: "◎",
+      value:
+        visualScore?.socialReadiness,
+      icon: "",
       className: "cyan"
     },
     {
       label: "Commerce Readiness",
-      value: visualScore?.commerceReadiness,
-      icon: "◈",
+      value:
+        visualScore?.commerceReadiness,
+      icon: "",
       className: "blue"
     }
   ];
@@ -324,13 +652,16 @@ function UploadProduct() {
     deepCommerce?.creativeStrategies;
 
   const visualStrengths =
-    deepCommerce?.visualStrengths || [];
+    deepCommerce?.visualStrengths ||
+    [];
 
   const visualWeaknesses =
-    deepCommerce?.visualWeaknesses || [];
+    deepCommerce?.visualWeaknesses ||
+    [];
 
   const improvementRecommendations =
-    deepCommerce?.improvementRecommendations || [];
+    deepCommerce?.improvementRecommendations ||
+    [];
 
   return (
     <div className="visualiq-dashboard">
@@ -362,22 +693,22 @@ function UploadProduct() {
         <nav className="sidebar-nav">
 
           <div className="nav-item active">
-            <span>◈</span>
+            <span></span>
             Product Intelligence
           </div>
 
           <div className="nav-item">
-            <span>✦</span>
+            <span></span>
             Visual Studio
           </div>
 
           <div className="nav-item">
-            <span>◉</span>
+            <span></span>
             Commerce Assets
           </div>
 
           <div className="nav-item">
-            <span>↗</span>
+            <span></span>
             Deployments
           </div>
 
@@ -402,7 +733,6 @@ function UploadProduct() {
 
       </aside>
 
-
       {/* MAIN */}
 
       <main className="visualiq-main">
@@ -414,7 +744,7 @@ function UploadProduct() {
           <div>
 
             <div className="eyebrow">
-              ☁ CLOUDINARY VISUAL COMMERCE
+               CLOUDINARY VISUAL COMMERCE
             </div>
 
             <h1>
@@ -435,7 +765,6 @@ function UploadProduct() {
 
         </header>
 
-
         {/* HERO */}
 
         <section className="hero-card">
@@ -443,7 +772,7 @@ function UploadProduct() {
           <div className="hero-content">
 
             <div className="hero-badge">
-              ✦ AI PRODUCT INTELLIGENCE
+               AI PRODUCT INTELLIGENCE
             </div>
 
             <h2>
@@ -460,17 +789,17 @@ function UploadProduct() {
             <div className="hero-features">
 
               <div>
-                <span>✦</span>
+                <span></span>
                 Visual Scoring
               </div>
 
               <div>
-                <span>◈</span>
+                <span></span>
                 Commerce Analysis
               </div>
 
               <div>
-                <span>◎</span>
+                <span></span>
                 Multi-channel Assets
               </div>
 
@@ -488,7 +817,6 @@ function UploadProduct() {
 
         </section>
 
-
         {/* UPLOAD WORKSPACE */}
 
         <section className="workspace-grid">
@@ -504,7 +832,7 @@ function UploadProduct() {
           >
 
             <div className="section-label">
-              01 — INPUT
+              01 | INPUT
             </div>
 
             <h3>
@@ -521,7 +849,7 @@ function UploadProduct() {
                 <>
 
                   <div className="upload-icon">
-                    ↑
+                    
                   </div>
 
                   <h4>
@@ -605,18 +933,17 @@ function UploadProduct() {
             >
               {loading
                 ? "Processing Product..."
-                : "Analyze Product →"}
+                : "Analyze Product "}
             </button>
 
           </div>
-
 
           {/* PREVIEW */}
 
           <div className="preview-card">
 
             <div className="section-label">
-              02 — VISUAL REPRESENTATION
+              02 - VISUAL REPRESENTATION
             </div>
 
             <div className="preview-header">
@@ -668,7 +995,6 @@ function UploadProduct() {
 
         </section>
 
-
         {/* INTELLIGENCE */}
 
         <section
@@ -677,7 +1003,7 @@ function UploadProduct() {
         >
 
           <div className="section-label">
-            03 — INTELLIGENCE
+            03  INTELLIGENCE
           </div>
 
           <div className="intelligence-header">
@@ -705,10 +1031,7 @@ function UploadProduct() {
 
           </div>
 
-
           <div className="intelligence-grid">
-
-            {/* SCORE */}
 
             <div className="score-card">
 
@@ -722,7 +1045,7 @@ function UploadProduct() {
 
                   {result
                     ? Number(commerceScore).toFixed(1)
-                    : "—"}
+                    : ""}
 
                   <small>
                     /10
@@ -741,9 +1064,6 @@ function UploadProduct() {
               </div>
 
             </div>
-
-
-            {/* PRODUCT INFO */}
 
             <div className="product-info-card">
 
@@ -793,7 +1113,7 @@ function UploadProduct() {
                 <div className="waiting-box">
 
                   <span>
-                    ✦
+                    
                   </span>
 
                   Analyze your product to generate
@@ -817,7 +1137,7 @@ function UploadProduct() {
                         >
 
                           <span>
-                            ✓
+                            
                           </span>
 
                           {feature}
@@ -828,8 +1148,6 @@ function UploadProduct() {
 
                   </div>
                 )}
-
-              {/* Deterministic intelligence features */}
 
               {result &&
                 !analysis?.keyFeatures &&
@@ -847,7 +1165,7 @@ function UploadProduct() {
                         >
 
                           <span>
-                            ✓
+                            
                           </span>
 
                           {feature}
@@ -863,7 +1181,6 @@ function UploadProduct() {
             </div>
 
           </div>
-
 
           {/* METRICS */}
 
@@ -888,7 +1205,7 @@ function UploadProduct() {
 
                   {metric.value !== undefined
                     ? `${metric.value.toFixed(1)}/10`
-                    : "—"}
+                    : ""}
 
                 </div>
 
@@ -898,10 +1215,7 @@ function UploadProduct() {
 
           </div>
 
-
-          {/* =====================================================
-              DEEP COMMERCE INTELLIGENCE
-             ===================================================== */}
+          {/* DEEP COMMERCE INTELLIGENCE */}
 
           {result && deepCommerce && (
 
@@ -946,7 +1260,6 @@ function UploadProduct() {
 
               </div>
 
-
               {/* AUDIENCE + POSITIONING */}
 
               <div
@@ -955,8 +1268,6 @@ function UploadProduct() {
                   marginTop: "20px"
                 }}
               >
-
-                {/* TARGET AUDIENCE */}
 
                 <div className="product-info-card">
 
@@ -991,7 +1302,7 @@ function UploadProduct() {
                           >
 
                             <span>
-                              ✓
+                              
                             </span>
 
                             {item}
@@ -1006,9 +1317,6 @@ function UploadProduct() {
                   )}
 
                 </div>
-
-
-                {/* BRAND POSITIONING */}
 
                 <div className="product-info-card">
 
@@ -1043,7 +1351,7 @@ function UploadProduct() {
                           >
 
                             <span>
-                              ◆
+                              
                             </span>
 
                             {item}
@@ -1060,7 +1368,6 @@ function UploadProduct() {
                 </div>
 
               </div>
-
 
               {/* MARKETING INTELLIGENCE */}
 
@@ -1097,7 +1404,7 @@ function UploadProduct() {
                     <div className="feature-row">
 
                       <span>
-                        ✦
+                        
                       </span>
 
                       Campaign:
@@ -1109,7 +1416,7 @@ function UploadProduct() {
                     <div className="feature-row">
 
                       <span>
-                        →
+                        
                       </span>
 
                       CTA:
@@ -1138,7 +1445,7 @@ function UploadProduct() {
                           >
 
                             <span>
-                              ◎
+                              
                             </span>
 
                             {idea}
@@ -1156,7 +1463,6 @@ function UploadProduct() {
 
               )}
 
-
               {/* STRENGTHS + WEAKNESSES */}
 
               <div
@@ -1165,8 +1471,6 @@ function UploadProduct() {
                   marginTop: "20px"
                 }}
               >
-
-                {/* STRENGTHS */}
 
                 <div className="product-info-card">
 
@@ -1189,7 +1493,7 @@ function UploadProduct() {
                         >
 
                           <span>
-                            ✓
+                            
                           </span>
 
                           {item}
@@ -1202,9 +1506,6 @@ function UploadProduct() {
                   </div>
 
                 </div>
-
-
-                {/* WEAKNESSES */}
 
                 <div className="product-info-card">
 
@@ -1243,7 +1544,6 @@ function UploadProduct() {
 
               </div>
 
-
               {/* PLATFORM STRATEGY */}
 
               {platformStrategy && (
@@ -1273,7 +1573,7 @@ function UploadProduct() {
                     <div className="feature-row">
 
                       <span>
-                        ◎
+                        
                       </span>
 
                       <strong>
@@ -1287,7 +1587,7 @@ function UploadProduct() {
                     <div className="feature-row">
 
                       <span>
-                        ◈
+                        
                       </span>
 
                       <strong>
@@ -1301,7 +1601,7 @@ function UploadProduct() {
                     <div className="feature-row">
 
                       <span>
-                        ✦
+                        
                       </span>
 
                       <strong>
@@ -1315,7 +1615,7 @@ function UploadProduct() {
                     <div className="feature-row">
 
                       <span>
-                        ▶
+                        
                       </span>
 
                       <strong>
@@ -1331,7 +1631,6 @@ function UploadProduct() {
                 </div>
 
               )}
-
 
               {/* COMMERCE COPY */}
 
@@ -1369,7 +1668,7 @@ function UploadProduct() {
                           >
 
                             <span>
-                              ✓
+                              
                             </span>
 
                             {item}
@@ -1391,7 +1690,7 @@ function UploadProduct() {
                   >
 
                     <span>
-                      ✦
+                      
                     </span>
 
                     {commerceCopy.socialCaption}
@@ -1408,7 +1707,7 @@ function UploadProduct() {
                     <div className="feature-row">
 
                       <span>
-                        →
+                        
                       </span>
 
                       Ad Headline:
@@ -1420,7 +1719,7 @@ function UploadProduct() {
                     <div className="feature-row">
 
                       <span>
-                        →
+                        
                       </span>
 
                       {commerceCopy.adDescription}
@@ -1432,7 +1731,6 @@ function UploadProduct() {
                 </div>
 
               )}
-
 
               {/* VISUAL DNA */}
 
@@ -1468,7 +1766,7 @@ function UploadProduct() {
                             >
 
                               <span>
-                                ◆
+                                
                               </span>
 
                               Mood:
@@ -1497,7 +1795,7 @@ function UploadProduct() {
                             >
 
                               <span>
-                                ✦
+                                
                               </span>
 
                               Style:
@@ -1514,7 +1812,6 @@ function UploadProduct() {
                     )}
 
                   </div>
-
 
                   <div className="product-info-card">
 
@@ -1555,7 +1852,6 @@ function UploadProduct() {
 
               )}
 
-
               {/* CREATIVE STRATEGIES */}
 
               {creativeStrategies?.length > 0 && (
@@ -1593,7 +1889,7 @@ function UploadProduct() {
                             {strategy.strategy}
                           </strong>
 
-                          {" — "}
+                          {"  "}
 
                           {strategy.reason}
 
@@ -1613,7 +1909,6 @@ function UploadProduct() {
                 </div>
 
               )}
-
 
               {/* IMPROVEMENT RECOMMENDATIONS */}
 
@@ -1645,7 +1940,7 @@ function UploadProduct() {
                         >
 
                           <span>
-                            →
+                            
                           </span>
 
                           {item}
@@ -1661,12 +1956,85 @@ function UploadProduct() {
 
               )}
 
+              {/* AWS ARTICLE PUBLISHING */}
+
+              <div
+                className="product-info-card"
+                style={{
+                  marginTop: "20px"
+                }}
+              >
+
+                <div className="mini-label">
+                  AWS PUBLISHING
+                </div>
+
+                <h3>
+                  Publish Product Intelligence
+                </h3>
+
+                <p className="product-description">
+                  Convert the generated VISUALIQ
+                  commerce intelligence into a real
+                  HTML article and publish it to AWS S3.
+                </p>
+
+                <button
+                  type="button"
+                  className="analyze-button"
+                  onClick={handlePublishToAWS}
+                  disabled={
+                    !result ||
+                    awsPublishing
+                  }
+                >
+                  {awsPublishing
+                    ? "Publishing to AWS..."
+                    : "Publish Article to AWS S3 "}
+                </button>
+
+                {awsPublishResult?.success && (
+                  <div
+                    className="waiting-box"
+                    style={{
+                      marginTop: "16px"
+                    }}
+                  >
+
+                    <span>
+                      
+                    </span>
+
+                    <div>
+
+                      <strong>
+                        Article published successfully
+                      </strong>
+
+                      <br />
+
+                      AWS S3:
+                      {" "}
+                      {awsPublishResult.article?.bucket}
+
+                      <br />
+
+                      Key:
+                      {" "}
+                      {awsPublishResult.article?.key}
+
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+
             </section>
 
           )}
 
         </section>
-
 
         {/* PIPELINE */}
 
@@ -1762,7 +2130,6 @@ function UploadProduct() {
 
         </section>
 
-
         {/* ASSETS */}
 
         {result && visualAssets && (
@@ -1770,7 +2137,7 @@ function UploadProduct() {
           <section className="assets-section">
 
             <div className="section-label">
-              04 — VISUAL STUDIO
+              04  VISUAL STUDIO
             </div>
 
             <div className="intelligence-header">
@@ -1849,3 +2216,14 @@ function UploadProduct() {
 }
 
 export default UploadProduct;
+
+
+
+
+
+
+
+
+
+
+

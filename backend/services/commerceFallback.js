@@ -1,18 +1,16 @@
-function buildCommerceFallback(fileName, visualScore) {
-  const name = String(fileName || "product")
-    .replace(/\.[^/.]+$/, "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+﻿function buildCommerceFallback(fileName, visualScore) {
 
-  const productName =
-    name && name.toLowerCase() !== "product"
-      ? name.replace(/\b\w/g, (char) => char.toUpperCase())
-      : "Product";
+  const quality =
+    visualScore?.visualQuality ?? 0;
 
-  const quality = visualScore?.visualQuality ?? 0;
-  const brand = visualScore?.brandPotential ?? 0;
-  const social = visualScore?.socialReadiness ?? 0;
+  const brand =
+    visualScore?.brandPotential ?? 0;
+
+  const social =
+    visualScore?.socialReadiness ?? 0;
+
+  const commerce =
+    visualScore?.commerceReadiness ?? 0;
 
   const keyFeatures = [
     "High-resolution product presentation",
@@ -23,15 +21,21 @@ function buildCommerceFallback(fileName, visualScore) {
   const strengths = [];
 
   if (quality >= 7) {
-    strengths.push("Strong visual quality for digital product presentation");
+    strengths.push(
+      "Strong visual quality for digital product presentation"
+    );
   }
 
   if (brand >= 7) {
-    strengths.push("Good visual potential for consistent brand presentation");
+    strengths.push(
+      "Good visual potential for consistent brand presentation"
+    );
   }
 
   if (social >= 7) {
-    strengths.push("Strong readiness for social commerce formats");
+    strengths.push(
+      "Strong readiness for social commerce formats"
+    );
   }
 
   if (!strengths.length) {
@@ -68,15 +72,26 @@ function buildCommerceFallback(fileName, visualScore) {
 
   return {
     available: true,
-    source: "VISUALIQ Commerce Intelligence Fallback",
-    mode: "deterministic",
 
-    productName,
+    source:
+      "VISUALIQ Commerce Intelligence Fallback",
 
-    category: "Commerce Product",
+    mode:
+      "deterministic",
+
+    // IMPORTANT:
+    // The fallback does NOT identify the product from
+    // the filename. Product identification belongs to
+    // the vision AI layer.
+
+    productName:
+      "Product not confidently identified",
+
+    category:
+      "Visual Commerce Product",
 
     description:
-      `Visual commerce profile generated for ${productName} using the VISUALIQ Visual Intelligence Engine.`,
+      "VISUALIQ generated a commerce profile from the visible characteristics of the uploaded product image.",
 
     keyFeatures,
 
@@ -84,7 +99,7 @@ function buildCommerceFallback(fileName, visualScore) {
       "Online shoppers and digital commerce audiences",
 
     visualAnalysis:
-      `The product achieved ${quality.toFixed(
+      `The product image achieved ${quality.toFixed(
         1
       )}/10 visual quality, ${brand.toFixed(
         1
@@ -94,7 +109,8 @@ function buildCommerceFallback(fileName, visualScore) {
 
     strengths,
 
-    weaknesses: suggestedImprovements,
+    weaknesses:
+      suggestedImprovements,
 
     uniqueSellingPoints: [
       "Commerce-ready visual asset generation",
@@ -110,11 +126,11 @@ function buildCommerceFallback(fileName, visualScore) {
 
     suggestedImprovements,
 
-    overallScore: Number(
-      visualScore?.commerceReadiness ?? 0
-    ),
+    overallScore:
+      Number(commerce.toFixed(1)),
 
-    confidence: "MEDIUM"
+    confidence:
+      "LOW"
   };
 }
 

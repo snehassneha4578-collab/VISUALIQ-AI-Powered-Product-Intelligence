@@ -1,10 +1,12 @@
-const express = require("express");
+﻿const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 require("dotenv").config();
 
 const uploadRoutes = require("./routes/upload");
 const publishingRoutes = require("./integrations/publishing/publishingRoute");
+const emailRoutes = require("./integrations/publishing/email/emailRoute");
+const awsArticleRoutes = require("./integrations/publishing/aws/awsArticleRoute");
 const cloudinary = require("./config/cloudinary");
 
 const app = express();
@@ -74,7 +76,25 @@ app.get("/api/cloudinary-test", async (req, res) => {
 // ======================================================
 
 app.use("/api", uploadRoutes);
-app.use("/api/publishing", publishingRoutes);
+
+app.use(
+  "/api/publishing",
+  publishingRoutes
+);
+
+app.use(
+  "/api/publishing/email",
+  emailRoutes
+);
+
+// ======================================================
+// AWS S3 ARTICLE PUBLISHING
+// ======================================================
+
+app.use(
+  "/api/publishing/aws",
+  awsArticleRoutes
+);
 
 // ======================================================
 // SERVER
@@ -87,7 +107,3 @@ app.listen(PORT, () => {
     "VISUALIQ backend running on port " + PORT
   );
 });
-
-
-const emailRoutes = require("./integrations/publishing/email/emailRoute");
-app.use("/api/publishing/email", emailRoutes);
