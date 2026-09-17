@@ -1076,9 +1076,7 @@ function UploadProduct() {
                   </span>
 
                   <h3>
-                    {result
-                      ? productName
-                      : "Waiting for analysis"}
+                    {aiProcessing ? "Analyzing product..." : productName}
                   </h3>
 
                   <span className="category">
@@ -2216,6 +2214,7 @@ function UploadProduct() {
 }
 
 export default UploadProduct;
+
 
 
 
