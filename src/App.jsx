@@ -1,874 +1,1075 @@
 ﻿import { useRef, useState } from "react";
 import "./App.css";
 
+const API = "https://visualiq-ai-powered-product-intelligence.onrender.com/api";
+
 function App() {
-  const [active, setActive] = useState("Dashboard");
+  const fileInputRef = useRef(null);
+
+  const [active, setActive] = useState("Product Intelligence");
   const [image, setImage] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const fileInputRef = useRef(null);
+  const [analysis, setAnalysis] = useState(null);
+  const [media, setMedia] = useState(null);
+  const [error, setError] = useState("");
 
   const handleImage = (file) => {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Please select an image file.");
+      setError("Please select a valid image.");
       return;
     }
 
-    const imageUrl = URL.createObjectURL(file);
-
     setSelectedFile(file);
-
     setImage({
       name: file.name,
-      url: imageUrl,
-      type: file.type,
+      url: URL.createObjectURL(file),
+      size: (file.size / 1024 / 1024).toFixed(2),
     });
 
-    setAnalysisResult(null);
+    setAnalysis(null);
+    setMedia(null);
+    setError("");
   };
 
-  const handleFileChange = (event) => {
-    handleImage(event.target.files[0]);
+  const handleFileChange = (e) => {
+    handleImage(e.target.files?.[0]);
   };
 
-  const handleDrop = (event) => {
-    event.preventDefault();
-    handleImage(event.dataTransfer.files[0]);
+  const handleDrop = (e) => {
+    e.preventDefault();
+    handleImage(e.dataTransfer.files?.[0]);
   };
 
   const analyzeProduct = async () => {
     if (!selectedFile) {
-      alert("Please upload a product image first.");
+      setError("Upload a product image first.");
       return;
     }
 
     setAnalyzing(true);
-    setAnalysisResult(null);
+    setError("");
+    setAnalysis(null);
+    setMedia(null);
 
     try {
       const formData = new FormData();
-
-      formData.append("file", selectedFile);
+      formData.append("image", selectedFile);
       formData.append("upload_preset", "visualiq_products");
 
-      const response = await fetch(
-        "https://api.cloudinary.com/v1_1/d6s5slnx/image/upload",
-        {
-          method: "POST",
-          body: formData,
+      const response = await fetch(`${API}/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          const raw = await response.text();
+          throw new Error(
+            `Backend returned ${response.status} ${response.statusText} instead of JSON: ${raw.slice(0, 120)}`
+          );
         }
-      );
 
-      const data = await response.json();
+        const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(
-          data.error?.message || "Cloudinary upload failed."
-        );
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Analysis failed.");
       }
 
-      const optimizedUrl = data.secure_url.replace(
-      "/upload/",
-      "/upload/f_auto/q_auto/w_1200/"
-    );
+      setAnalysis(data);
 
-    const backgroundRemovedUrl = data.secure_url.replace(
-      "/upload/",
-      "/upload/e_background_removal/f_auto/q_auto/"
-    );
+      if (data.aiJobId) {
+        pollAI(data.aiJobId);
+      }
 
-    data.optimized_url = optimizedUrl;
-    data.background_removed_url = backgroundRemovedUrl;
-
-    data.marketplace_url = data.secure_url.replace(
-      "/upload/",
-      "/upload/f_auto/q_auto/c_fill,w_1200,h_1200/"
-    );
-
-    data.instagram_url = data.secure_url.replace(
-      "/upload/",
-      "/upload/f_auto/q_auto/c_fill,w_1080,h_1350/"
-    );
-
-    let readinessScore = 70;
-
-    if (data.secure_url) readinessScore += 5;
-    if (data.optimized_url) readinessScore += 10;
-    if (data.background_removed_url) readinessScore += 10;
-    if (data.marketplace_url && data.instagram_url && data.story_url) {
-      readinessScore += 5;
-    }
-
-    data.readiness_score = Math.min(readinessScore, 100);
-    data.story_url = data.secure_url.replace(
-      "/upload/",
-      "/upload/f_auto/q_auto/c_fill,w_1080,h_1920/"
-    );
-
-    setAnalysisResult({
-        success: true,
-        message: "Product uploaded to Cloudinary successfully.",
-        cloudinary: data,
-      });
-    } catch (error) {
-      console.error("VISUALIQ Cloudinary error:", error);
-
-      alert(`Cloudinary upload failed: ${error.message}`);
-    } finally {
+      if (data.mediaJobId) {
+        pollMedia(data.mediaJobId);
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Something went wrong.");
       setAnalyzing(false);
     }
   };
 
+  const pollAI = async (jobId) => {
+    let attempts = 0;
+
+    const check = async () => {
+      try {
+        const response = await fetch(`${API}/ai-status/${jobId}`);
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          const raw = await response.text();
+          throw new Error(
+            `Backend returned ${response.status} ${response.statusText} instead of JSON: ${raw.slice(0, 120)}`
+          );
+        }
+
+        const data = await response.json();
+
+        if (data.status === "complete") {
+          setAnalysis((previous) => ({
+            ...previous,
+            aiAnalysis: data.analysis,
+            deepCommerceIntelligence:
+              data.deepCommerceIntelligence,
+            product: {
+              ...(previous?.product || {}),
+              name:
+                data.analysis?.productName ||
+                previous?.product?.name ||
+                "Product",
+              category:
+                data.analysis?.category ||
+                previous?.product?.category ||
+                "Product",
+            },
+          }));
+
+          setAnalyzing(false);
+          return;
+        }
+
+        if (data.status === "error") {
+          setAnalyzing(false);
+          return;
+        }
+
+        attempts++;
+
+        if (attempts < 30) {
+          setTimeout(check, 700);
+        } else {
+          setAnalyzing(false);
+        }
+      } catch (err) {
+        console.error("AI polling error:", err);
+        setAnalyzing(false);
+      }
+    };
+
+    check();
+  };
+
+  const pollMedia = async (jobId) => {
+    let attempts = 0;
+
+    const check = async () => {
+      try {
+        const response = await fetch(`${API}/media-status/${jobId}`);
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          const raw = await response.text();
+          throw new Error(
+            `Backend returned ${response.status} ${response.statusText} instead of JSON: ${raw.slice(0, 120)}`
+          );
+        }
+
+        const data = await response.json();
+
+        if (data.status === "complete") {
+          setMedia(data);
+          return;
+        }
+
+        attempts++;
+
+        if (attempts < 40) {
+          setTimeout(check, 800);
+        }
+      } catch (err) {
+        console.error("Media polling error:", err);
+      }
+    };
+
+    check();
+  };
+
+  const productName =
+    analysis?.aiAnalysis?.productName ||
+    analysis?.product?.name ||
+    "Product";
+
+  const category =
+    analysis?.aiAnalysis?.category ||
+    analysis?.product?.category ||
+    "Product";
+
+  const score =
+    analysis?.visualScore?.commerceReadiness ||
+    analysis?.visualScore?.overall ||
+    analysis?.deepCommerceIntelligence?.commerceReadiness ||
+    6.7;
+
+  const intelligence =
+    analysis?.deepCommerceIntelligence ||
+    analysis?.aiAnalysis ||
+    {};
+
+  const visualScore =
+    analysis?.visualScore || {};
+
+  const assets =
+    media?.visualAssets ||
+    analysis?.visualAssets ||
+    {};
+
+  const scoreValue = (value, fallback = 6.7) => {
+    if (typeof value === "number") return value.toFixed(1);
+    return fallback.toFixed(1);
+  };
+
   return (
-    <div className="app">
+    <div className="visualiq-app">
 
       {/* SIDEBAR */}
       <aside className="sidebar">
-
-        <div className="brand">
-          <div className="brand-icon">V</div>
+        <div className="sidebar-brand">
+          <div className="brand-mark">V</div>
 
           <div>
-            <h1>VISUALIQ</h1>
-            <span>Visual Commerce AI</span>
+            <div className="brand-name">VISUALIQ</div>
+            <div className="brand-subtitle">PRODUCT INTELLIGENCE</div>
           </div>
         </div>
 
-        <nav>
-  <button
-    className={active === "Dashboard" ? "nav-item active" : "nav-item"}
-    onClick={() => setActive("Dashboard")}
-  >
-    <span className="nav-icon icon-dashboard"></span>
-    Dashboard
-  </button>
+        <div className="sidebar-section-title">
+          WORKSPACE
+        </div>
 
-  <button
-    className={active === "Visual Studio" ? "nav-item active" : "nav-item"}
-    onClick={() => setActive("Visual Studio")}
-  >
-    <span className="nav-icon icon-studio"></span>
-    Visual Studio
-  </button>
-
-  <button
-    className={active === "Product IQ" ? "nav-item active" : "nav-item"}
-    onClick={() => setActive("Product IQ")}
-  >
-    <span className="nav-icon icon-iq"></span>
-    Product IQ
-  </button>
-
-  <button
-    className={active === "Media Kit" ? "nav-item active" : "nav-item"}
-    onClick={() => setActive("Media Kit")}
-  >
-    <span className="nav-icon icon-kit"></span>
-    Media Kit
-  </button>
-</nav>
+        <nav className="sidebar-nav">
+          {[
+            ["Product Intelligence", "◈"],
+            ["Visual Studio", "✦"],
+            ["Commerce Assets", "▣"],
+            ["Deployments", "↗"],
+          ].map(([item, icon]) => (
+            <button
+              key={item}
+              className={
+                active === item
+                  ? "sidebar-item active"
+                  : "sidebar-item"
+              }
+              onClick={() => setActive(item)}
+            >
+              <span>{icon}</span>
+              {item}
+            </button>
+          ))}
+        </nav>
 
         <div className="sidebar-bottom">
+          <div className="connection-card">
+            <div className="connection-top">
+              <span className="live-dot"></span>
+              <span>Cloudinary Connected</span>
+            </div>
 
-          <div className="cloudinary-badge">
-            <span className="status-dot"></span>
-
-            Cloudinary Pipeline
-
-            <strong>Active</strong>
+            <small>
+              AI-powered visual commerce pipeline
+            </small>
           </div>
 
+          <div className="sidebar-footer">
+            <div className="mini-avatar">SS</div>
+            <div>
+              <strong>VISUALIQ</strong>
+              <span>AI Commerce Studio</span>
+            </div>
+          </div>
         </div>
-
       </aside>
 
       {/* MAIN */}
-      <main className="main">
+      <main className="main-content">
 
         {/* TOP BAR */}
         <header className="topbar">
-
           <div>
-
-            <span className="eyebrow">
-              AI VISUAL COMMERCE STUDIO
+            <span className="top-eyebrow">
+              VISUAL INTELLIGENCE
             </span>
-
-            <h2>
-              Turn products into{" "}
-              <span>visual stories.</span>
-            </h2>
-
-          </div>
-
-          <div className="top-actions">
-
-            <button className="icon-btn">
-              
-            </button>
-
-            <div className="avatar">
-              SS
+            <div className="top-title">
+              Product Intelligence
             </div>
-
           </div>
 
+          <div className="top-status">
+            <span className="live-dot"></span>
+            Pipeline Active
+          </div>
         </header>
 
-        {/* HERO */}
-        <section className="hero">
-
-          <div className="hero-content">
-
-            <div className="pill">
-
-              <span className="pulse"></span>
-
-              AI-powered product intelligence
-
+        {/* PAGE HEADER */}
+        <section className="page-header">
+          <div>
+            <div className="section-kicker">
+              AI PRODUCT INTELLIGENCE
             </div>
 
-            <h3>
-              One photo.
-              <br />
-              <span>Infinite possibilities.</span>
-            </h3>
+            <h1>
+              See Your Product's
+              <span> Commerce Potential</span>
+            </h1>
 
             <p>
-              Upload an ordinary product image and transform it
-              into professional, commerce-ready visual assets
-              with AI and Cloudinary.
+              Upload one product image and VISUALIQ evaluates
+              visual quality, brand potential, social readiness
+              and commerce readiness.
             </p>
-
-            <div className="hero-buttons">
-
-              <button
-                className="primary-btn"
-                onClick={() =>
-                  fileInputRef.current.click()
-                }
-              >
-                 Start Creating
-              </button>
-
-              <button
-                className="secondary-btn"
-                onClick={() =>
-                  fileInputRef.current.click()
-                }
-              >
-                Explore Studio
-              </button>
-
-            </div>
-
           </div>
 
-          {/* HERO VISUAL */}
-          <div className="visual-card">
-
-            {image ? (
-
-              <img
-                src={image.url}
-                alt="Uploaded product"
-                className="hero-preview"
-              />
-
-            ) : (
-
-              <div className="product-orb">
-
-                <div className="orb-glow"></div>
-
-                <div className="product-placeholder">
-
-                  <div className="product-top"></div>
-
-                  <div className="product-body"></div>
-
-                  <div className="product-base"></div>
-
-                </div>
-
-              </div>
-
-            )}
-
-            <div className="floating-tag tag-one">
-              <span></span>
-              AI Enhanced
-            </div>
-
-            <div className="floating-tag tag-two">
-              <span>OK</span>
-              96% Ready
-            </div>
-
+          <div className="header-orb">
+            <div className="orb-ring ring-one"></div>
+            <div className="orb-ring ring-two"></div>
+            <div className="orb-core">V</div>
           </div>
-
         </section>
 
-        {/* WORKSPACE */}
-        <section className="workspace">
+        {/* FEATURE STRIP */}
+        <div className="feature-strip">
+          <div>
+            <span>01</span>
+            <strong>Visual Scoring</strong>
+          </div>
 
-          <div className="section-heading">
+          <div>
+            <span>02</span>
+            <strong>Commerce Analysis</strong>
+          </div>
 
+          <div>
+            <span>03</span>
+            <strong>Multi-channel Assets</strong>
+          </div>
+        </div>
+
+        {/* INPUT + PREVIEW */}
+        <section className="input-grid">
+
+          {/* INPUT */}
+          <div className="panel input-panel">
+            <div className="panel-number">01 | INPUT</div>
+
+            <div className="panel-heading">
+              <div>
+                <h2>Product Image</h2>
+                <p>Upload your source product image.</p>
+              </div>
+            </div>
+
+            {!image ? (
+              <div
+                className="dropzone"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <div className="drop-icon">↑</div>
+
+                <strong>Drop product image</strong>
+
+                <span>
+                  PNG, JPG or WEBP
+                </span>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  Select Product
+                </button>
+              </div>
+            ) : (
+              <div className="selected-file">
+                <img src={image.url} alt="Selected product" />
+
+                <div className="file-details">
+                  <span className="ready-badge">
+                    READY
+                  </span>
+
+                  <strong>{image.name}</strong>
+
+                  <small>
+                    {image.size} MB · Product image
+                  </small>
+
+                  <button
+                    className="change-button"
+                    onClick={() =>
+                      fileInputRef.current?.click()
+                    }
+                  >
+                    Change Image
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              accept="image/png,image/jpeg,image/webp,image/avif"
+              onChange={handleFileChange}
+            />
+
+            <button
+              className="analyze-button"
+              disabled={!selectedFile || analyzing}
+              onClick={analyzeProduct}
+            >
+              {analyzing
+                ? "Analyzing Product..."
+                : "Analyze Product"}
+              <span>→</span>
+            </button>
+
+            {error && (
+              <div className="error-box">
+                {error}
+              </div>
+            )}
+          </div>
+
+          {/* VISUAL REPRESENTATION */}
+          <div className="panel preview-panel">
+            <div className="panel-number">
+              02 - VISUAL REPRESENTATION
+            </div>
+
+            <div className="panel-heading">
+              <div>
+                <h2>Product Preview</h2>
+                <p>Your source asset</p>
+              </div>
+
+              {image && (
+                <span className="ready-badge">
+                  READY
+                </span>
+              )}
+            </div>
+
+            <div className="preview-stage">
+              {image ? (
+                <img
+                  src={image.url}
+                  alt="Product preview"
+                />
+              ) : (
+                <div className="empty-product">
+                  <div className="empty-v">V</div>
+                  <span>Awaiting product image</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* INTELLIGENCE */}
+        <section className="intelligence-section">
+
+          <div className="section-header-row">
             <div>
+              <div className="panel-number">
+                03 INTELLIGENCE
+              </div>
 
-              <span className="eyebrow">
-                WORKSPACE
+              <h2>Commerce Analysis</h2>
+
+              <p>
+                Visual intelligence generated by the VISUALIQ
+                pipeline.
+              </p>
+            </div>
+
+            <div className="ai-active">
+              <span className="live-dot"></span>
+              AI ACTIVE
+            </div>
+          </div>
+
+          <div className="analysis-layout">
+
+            {/* PRODUCT IDENTITY */}
+            <div className="product-identity panel">
+              <div className="commerce-label">
+                COMMERCE READINESS
+              </div>
+
+              <div className="big-score">
+                {scoreValue(score)}
+                <span>/10</span>
+              </div>
+
+              <div className="score-caption">
+                Visual commerce score
+              </div>
+
+              <div className="product-divider"></div>
+
+              <div className="commerce-label">
+                PRODUCT
+              </div>
+
+              <h3>{productName}</h3>
+
+              <span className="category-tag">
+                {category}
+              </span>
+
+              <div className="ai-description">
+                <span>AI ANALYSIS</span>
+
+                <p>
+                  {analysis?.aiAnalysis?.identificationReason ||
+                    `VISUALIQ identified the visible product through
+                    multimodal product intelligence.`}
+                </p>
+
+                {analysis?.aiAnalysis?.brand && (
+                  <div className="identity-meta">
+                    <span>BRAND</span>
+                    <strong>
+                      {analysis.aiAnalysis.brand}
+                    </strong>
+                  </div>
+                )}
+
+                {analysis?.aiAnalysis?.variant && (
+                  <div className="identity-meta">
+                    <span>VARIANT</span>
+                    <strong>
+                      {analysis.aiAnalysis.variant}
+                    </strong>
+                  </div>
+                )}
+
+                {analysis?.aiAnalysis?.identificationConfidence && (
+                  <div className="confidence">
+                    <span>
+                      IDENTIFICATION CONFIDENCE
+                    </span>
+                    <strong>
+                      {analysis.aiAnalysis.identificationConfidence}
+                    </strong>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* SCORES */}
+            <div className="scores-panel">
+              {[
+                [
+                  "Visual Quality",
+                  visualScore.visualQuality,
+                  "Visual clarity",
+                ],
+                [
+                  "Brand Potential",
+                  visualScore.brandPotential,
+                  "Brand visibility",
+                ],
+                [
+                  "Social Readiness",
+                  visualScore.socialReadiness,
+                  "Social suitability",
+                ],
+                [
+                  "Commerce Readiness",
+                  visualScore.commerceReadiness || score,
+                  "Commerce potential",
+                ],
+              ].map(([title, value, subtitle]) => (
+                <div className="score-card" key={title}>
+                  <div>
+                    <strong>{title}</strong>
+                    <span>{subtitle}</span>
+                  </div>
+
+                  <div className="score-number">
+                    {scoreValue(value)}
+                    <small>/10</small>
+                  </div>
+
+                  <div className="score-bar">
+                    <span
+                      style={{
+                        width: `${Number(value || 6.7) * 10}%`,
+                      }}
+                    ></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* DEEP COMMERCE */}
+        <section className="commerce-section">
+
+          <div className="section-header-row">
+            <div>
+              <div className="panel-number">
+                DEEP COMMERCE INTELLIGENCE
+              </div>
+
+              <h2>Commerce Strategy</h2>
+
+              <p>
+                Product intelligence derived from the VISUALIQ
+                commerce engine.
+              </p>
+            </div>
+
+            <span className="engine-badge">
+              Deterministic Visual Commerce Engine
+            </span>
+          </div>
+
+          <div className="commerce-grid-main">
+
+            <div className="strategy-card">
+              <span className="card-label">
+                TARGET AUDIENCE
               </span>
 
               <h3>
-                Bring your product to life
+                {intelligence.targetAudience?.primary ||
+                  "Online shoppers"}
               </h3>
 
-            </div>
-
-            <span className="step">
-
-              {analyzing
-                ? "02 / Analyzing"
-                : "01 / Upload"}
-
-            </span>
-
-          </div>
-
-          {!image ? (
-
-            <div
-              className="upload-area"
-              onDragOver={(event) =>
-                event.preventDefault()
-              }
-              onDrop={handleDrop}
-              onClick={() =>
-                fileInputRef.current.click()
-              }
-            >
-
-              <div className="upload-icon">
-                UPLOAD
-              </div>
-
-              <h4>
-                Drop your product image here
-              </h4>
-
               <p>
-                PNG, JPG or WEBP  -  We'll handle
-                the rest with AI
+                Secondary: Mobile-first commerce consumers
               </p>
 
-              <button
-                className="upload-btn"
-                onClick={(event) => {
-
-                  event.stopPropagation();
-
-                  fileInputRef.current.click();
-
-                }}
-              >
-                Choose Product Image
-              </button>
-
+              <div className="keyword-row">
+                <span>Product appearance</span>
+                <span>Convenience</span>
+                <span>Visual confidence</span>
+              </div>
             </div>
 
-          ) : (
+            <div className="strategy-card">
+              <span className="card-label">
+                BRAND POSITIONING
+              </span>
 
-            <div className="uploaded-card">
+              <h3>
+                {intelligence.brandPositioning?.position ||
+                  "Digital commerce product"}
+              </h3>
 
-              <img
-                src={image.url}
-                alt="Product preview"
-              />
+              <p>
+                Perceived tier:{" "}
+                {intelligence.perceivedTier || "Mid-market"}
+              </p>
 
-              <div className="uploaded-info">
+              <div className="keyword-row">
+                <span>Modern</span>
+                <span>Accessible</span>
+                <span>Practical</span>
+              </div>
+            </div>
 
-                <span className="success-label">
-                  OK IMAGE READY
-                </span>
+            <div className="strategy-card strategy-wide">
+              <span className="card-label">
+                MARKETING INTELLIGENCE
+              </span>
 
-                <h4>
-                  {image.name}
-                </h4>
+              <h3>
+                {intelligence.marketingMessage ||
+                  "Clear visual presentation designed for confident online discovery"}
+              </h3>
 
-                <p>
-                  {analyzing
-                    ? "VISUALIQ is sending your product to the AI backend..."
-                    : "Your product image is ready for AI processing."}
-                </p>
+              <p>
+                Discover {productName} through a clear,
+                polished and commerce-ready visual experience.
+              </p>
 
-                <div className="processing-preview">
-
-                  <span>01</span>
-                  Upload complete
-
-                  <span className="pipeline-arrow"></span>
-
-                  <span>02</span>
-                  AI Analysis
-
-                  <span className="pipeline-arrow"></span>
-
-                  <span>03</span>
-                  Transform
-
-                </div>
-
-                {/* ANALYZE BUTTON */}
-                <button
-                  className="primary-btn"
-                  onClick={analyzeProduct}
-                  disabled={analyzing}
-                >
-
-                  {analyzing
-                    ? " Analyzing..."
-                    : " Analyze Product"}
-
-                </button>
-
-                {/* BACKEND RESULT */}
-                {analysisResult && (
-
-                  <div
-                    style={{
-                      marginTop: "20px",
-                      padding: "18px",
-                      borderRadius: "16px",
-                      background:
-                        "rgba(255,255,255,0.06)",
-                      border:
-                        "1px solid rgba(255,255,255,0.12)",
-                    }}
-                  >
-
-                    <div
-                      style={{
-                        fontWeight: "700",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      CLOUDINARY ASSET READY
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: "14px",
-                        opacity: 0.8,
-                      }}
-                    >
-                      {analysisResult.message}
-
-                      {analysisResult.cloudinary?.background_removed_url && (
-                        <div className="before-after">
-                          <div className="before-after-header">
-                            <div>
-                              <div className="before-after-label">
-                                AI TRANSFORMATION
-                              </div>
-                              <h3>Before → After</h3>
-                            </div>
-                            <span>Cloudinary AI</span>
-                          </div>
-
-                          <div className="before-after-grid">
-                            <div className="before-after-card">
-                              <div className="before-after-tag">ORIGINAL</div>
-                              <img
-                                src={analysisResult.cloudinary.secure_url}
-                                alt="Original product"
-                              />
-                            </div>
-
-                            <div className="before-after-card">
-                              <div className="before-after-tag">AI CUTOUT</div>
-                              <img
-                                src={analysisResult.cloudinary.background_removed_url}
-                                alt="AI background removed product"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {analysisResult.cloudinary?.background_removed_url && (
-                        <>
-                          <div className="readiness-card">
-                      <div>
-                        <div className="readiness-label">
-                          PRODUCT READINESS
-                        </div>
-                        <div className="readiness-subtitle">
-                          Commerce asset quality
-                        </div>
-                      </div>
-
-                      <div className="readiness-score">
-                        {analysisResult.cloudinary?.readiness_score || 96}%
-                      </div>
-                    </div>
-
-                    <div className="optimized-preview background-preview">
-                          <div className="optimized-preview-label">
-                            AI BACKGROUND REMOVED
-                          </div>
-
-                          <img
-                            src={analysisResult.cloudinary.background_removed_url}
-                            alt="AI background removed product"
-                          />
-
-                          <a
-                            href={analysisResult.cloudinary.background_removed_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Open background-removed asset
-                          </a>
-                        </div>
-                        </>
-                      )}
-
-                      {analysisResult.cloudinary?.marketplace_url && (
-                        <>
-                          <div className="media-kit">
-                          <div className="media-kit-header">
-                            <div>
-                              <div className="media-kit-label">
-                                VISUAL COMMERCE KIT
-                              </div>
-                              <h3>Ready to launch</h3>
-                              <p>
-                                Your product has been transformed into
-                                platform-ready visual assets.
-                              </p>
-                            </div>
-
-                            <div className="media-kit-status">
-                              READY
-                            </div>
-                          </div>
-
-                          <div className="media-kit-summary">
-                            <span>1 ORIGINAL</span>
-                            <span>1 OPTIMIZED</span>
-                            <span>1 AI CUTOUT</span>
-                            <span>3 FORMATS</span>
-                          </div>
-                          </div>
-
-                          <div className="commerce-formats">
-                          <div className="commerce-title">
-                            COMMERCE-READY FORMATS
-                          </div>
-
-                          <div className="media-kit-actions">
-                          <a
-                            href={analysisResult.cloudinary.marketplace_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="kit-button"
-                          >
-                            Download Marketplace
-                          </a>
-
-                          <a
-                            href={analysisResult.cloudinary.instagram_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="kit-button"
-                          >
-                            Download Instagram
-                          </a>
-
-                          <a
-                            href={analysisResult.cloudinary.story_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="kit-button"
-                          >
-                            Download Story
-                          </a>
-                        </div>
-
-                        <div className="commerce-grid">
-                            <div className="commerce-card">
-                              <img
-                                src={analysisResult.cloudinary.marketplace_url}
-                                alt="Marketplace product"
-                              />
-                              <strong>Marketplace</strong>
-                              <span>1200 × 1200</span>
-                            </div>
-
-                            <div className="commerce-card">
-                              <img
-                                src={analysisResult.cloudinary.instagram_url}
-                                alt="Instagram product"
-                              />
-                              <strong>Instagram</strong>
-                              <span>1080 × 1350</span>
-                            </div>
-
-                            <div className="commerce-card">
-                              <img
-                                src={analysisResult.cloudinary.story_url}
-                                alt="Story product"
-                              />
-                              <strong>Story</strong>
-                              <span>1080 × 1920</span>
-                            </div>
-                          </div>
-                        </div>
-                        </>
-                      )}
-
-                      {analysisResult.cloudinary?.optimized_url && (
-                        <div className="optimized-preview">
-                          <div className="optimized-preview-label">
-                            CLOUDINARY OPTIMIZED
-                          </div>
-
-                          <img
-                            src={analysisResult.cloudinary.optimized_url}
-                            alt="Cloudinary optimized product"
-                          />
-
-                          <a
-                            href={analysisResult.cloudinary.optimized_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Open optimized asset
-                          </a>
-                        </div>
-                      )}
-                    </div>
-
-                    {analysisResult.file && (
-
-                      <div
-                        style={{
-                          marginTop: "10px",
-                          fontSize: "13px",
-                          opacity: 0.65,
-                        }}
-                      >
-
-                        File:{" "}
-                        {analysisResult.file.originalName}
-
-                        <br />
-
-                        Size:{" "}
-                        {Math.round(
-                          analysisResult.file.size /
-                            1024
-                        )}{" "}
-                        KB
-
-                        <br />
-
-                        Type:{" "}
-                        {analysisResult.file.type}
-
-                      </div>
-
-                    )}
-
-                  </div>
-
-                )}
-
+              <div className="campaign-box">
+                <span>CAMPAIGN</span>
+                <strong>
+                  Visual-first {productName} commerce campaign
+                </strong>
               </div>
 
+              <div className="strategy-list">
+                <span>Product-focused carousel</span>
+                <span>Lifestyle product post</span>
+                <span>Before-and-after creative optimization</span>
+                <span>Short-form product showcase video</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* STRENGTHS / WEAKNESSES */}
+        <section className="two-column-section">
+
+          <div className="panel insight-panel">
+            <div className="panel-number">
+              VISUAL STRENGTHS
             </div>
 
-          )}
+            <h2>What is working</h2>
 
-          {/* HIDDEN FILE INPUT */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            hidden
-            onChange={handleFileChange}
-          />
+            <div className="insight-item positive">
+              <span>✓</span>
+              <p>Product is clearly identifiable</p>
+            </div>
 
+            <div className="insight-item positive">
+              <span>✓</span>
+              <p>Suitable for multi-channel visual delivery</p>
+            </div>
+          </div>
+
+          <div className="panel insight-panel">
+            <div className="panel-number">
+              VISUAL WEAKNESSES
+            </div>
+
+            <h2>What can improve</h2>
+
+            <div className="insight-item warning">
+              <span>!</span>
+              <p>
+                Visual presentation could be strengthened
+                for stronger conversion potential
+              </p>
+            </div>
+
+            <div className="insight-item warning">
+              <span>!</span>
+              <p>
+                Additional creative refinement could improve
+                perceived product value
+              </p>
+            </div>
+
+            <div className="insight-item warning">
+              <span>!</span>
+              <p>
+                Lifestyle context could strengthen emotional
+                product storytelling
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* PLATFORM STRATEGY */}
+        <section className="platform-section">
+          <div className="panel-number">
+            PLATFORM STRATEGY
+          </div>
+
+          <h2>Multi-channel Commerce Strategy</h2>
+
+          <div className="platform-grid">
+            <div className="platform-card">
+              <span>Instagram</span>
+              <p>
+                Use visually strong square and portrait
+                creatives with concise lifestyle-focused
+                messaging.
+              </p>
+            </div>
+
+            <div className="platform-card">
+              <span>Marketplace</span>
+              <p>
+                Lead with the clearest product image and
+                concise benefit-oriented copy.
+              </p>
+            </div>
+
+            <div className="platform-card">
+              <span>Website</span>
+              <p>
+                Use the optimized hero asset with strong
+                product hierarchy and clear CTA.
+              </p>
+            </div>
+
+            <div className="platform-card">
+              <span>Short Video</span>
+              <p>
+                Show the product through a fast visual
+                sequence highlighting appearance and key
+                visible details.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* COMMERCE COPY */}
+        <section className="copy-section panel">
+          <div className="panel-number">
+            COMMERCE COPY
+          </div>
+
+          <h2>{productName}</h2>
+
+          <p className="copy-lead">
+            A visually presented {category} designed for
+            modern digital commerce.
+          </p>
+
+          <div className="copy-points">
+            <span>Clear product-focused presentation</span>
+            <span>Multi-channel commerce-ready assets</span>
+            <span>Optimized for digital discovery</span>
+          </div>
+
+          <div className="copy-quote">
+            Discover {productName}. Designed to stand out
+            across today's visual-first shopping experience.
+          </div>
+
+          <div className="copy-footer">
+            <div>
+              <span>AD HEADLINE</span>
+              <strong>Discover {productName}</strong>
+            </div>
+
+            <div>
+              <span>CTA</span>
+              <strong>Explore Product</strong>
+            </div>
+          </div>
+        </section>
+
+        {/* VISUAL DNA */}
+        <section className="dna-section">
+          <div className="panel-number">
+            VISUAL DNA
+          </div>
+
+          <h2>Visual Identity Profile</h2>
+
+          <div className="dna-grid">
+            <div>
+              <span>Mood</span>
+              <strong>Modern</strong>
+            </div>
+
+            <div>
+              <span>Mood</span>
+              <strong>Accessible</strong>
+            </div>
+
+            <div>
+              <span>Mood</span>
+              <strong>Practical</strong>
+            </div>
+
+            <div>
+              <span>Style</span>
+              <strong>Clean</strong>
+            </div>
+
+            <div>
+              <span>Style</span>
+              <strong>Commerce-focused</strong>
+            </div>
+
+            <div>
+              <span>Style</span>
+              <strong>Visual-first</strong>
+            </div>
+          </div>
+
+          <div className="keywords">
+            <span>#Visual Commerce</span>
+            <span>#Modern</span>
+            <span>#Product Discovery</span>
+            <span>#Digital Retail</span>
+          </div>
+        </section>
+
+        {/* CREATIVE STRATEGIES */}
+        <section className="creative-section">
+          <div className="panel-number">
+            CREATIVE STRATEGIES
+          </div>
+
+          <h2>Recommended Creative Directions</h2>
+
+          <div className="creative-grid">
+            {[
+              ["01", "Clean Product Focus", "Maximize product visibility and reduce visual distraction.", "5.8"],
+              ["02", "Lifestyle Storytelling", "Add emotional context around the product.", "5.4"],
+              ["03", "Social Discovery", "Adapt the product for visual-first social browsing.", "5.6"],
+            ].map(([number, title, text, value]) => (
+              <div className="creative-card" key={number}>
+                <span className="creative-number">{number}</span>
+                <h3>{title}</h3>
+                <p>{text}</p>
+                <strong>{value}/10</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* OPTIMIZATION */}
+        <section className="optimization-section panel">
+          <div className="panel-number">
+            OPTIMIZATION
+          </div>
+
+          <h2>Improvement Recommendations</h2>
+
+          <div className="recommendations">
+            <div>01</div>
+            <p>Create a stronger lifestyle-oriented hero composition</p>
+
+            <div>02</div>
+            <p>Use consistent visual treatment across social and marketplace assets</p>
+
+            <div>03</div>
+            <p>Strengthen product-focused messaging above the fold</p>
+
+            <div>04</div>
+            <p>Test multiple creative angles before launching paid campaigns</p>
+          </div>
+        </section>
+
+        {/* AWS */}
+        <section className="aws-section">
+          <div>
+            <div className="panel-number">
+              AWS PUBLISHING
+            </div>
+
+            <h2>Publish Product Intelligence</h2>
+
+            <p>
+              Convert the generated VISUALIQ commerce intelligence
+              into a real HTML article and publish it to AWS S3.
+            </p>
+          </div>
+
+          <button className="aws-button">
+            Publish Article to AWS S3
+            <span>↗</span>
+          </button>
         </section>
 
         {/* PIPELINE */}
-        <section className="pipeline">
-
-          <div className="section-heading">
-
-            <div>
-
-              <span className="eyebrow">
-                INTELLIGENT PIPELINE
-              </span>
-
-              <h3>
-                From image to commerce-ready
-              </h3>
-
-            </div>
-
+        <section className="pipeline-section">
+          <div className="panel-number">
+            VISUALIQ PIPELINE
           </div>
 
-          <div className="pipeline-grid">
-
-            {/* ANALYZE */}
-            <div className="pipeline-card">
-
-              <span className="number">
-                01
-              </span>
-
-              <div className="pipeline-icon">
-                AI
+          <div className="pipeline-row">
+            {[
+              ["01", "Analyze", "Understand product visuals"],
+              ["02", "Rate", "Score commerce potential"],
+              ["03", "Represent", "Generate visual assets"],
+              ["04", "Deploy", "Deliver across channels"],
+            ].map(([number, title, description]) => (
+              <div className="pipeline-step" key={number}>
+                <span>{number}</span>
+                <strong>{title}</strong>
+                <p>{description}</p>
               </div>
-
-              <h4>
-                Analyze
-              </h4>
-
-              <p>
-                AI understands your product and
-                visual attributes.
-              </p>
-
-            </div>
-
-            <div className="connector">
-              GO
-            </div>
-
-            {/* TRANSFORM */}
-            <div className="pipeline-card">
-
-              <span className="number">
-                02
-              </span>
-
-              <div className="pipeline-icon">
-                
-              </div>
-
-              <h4>
-                Transform
-              </h4>
-
-              <p>
-                Enhance, remove backgrounds and
-                create new scenes.
-              </p>
-
-            </div>
-
-            <div className="connector">
-              GO
-            </div>
-
-            {/* OPTIMIZE */}
-            <div className="pipeline-card">
-
-              <span className="number">
-                03
-              </span>
-
-              <div className="pipeline-icon">
-                OPT
-              </div>
-
-              <h4>
-                Optimize
-              </h4>
-
-              <p>
-                Generate platform-ready formats
-                and optimized media.
-              </p>
-
-            </div>
-
-            <div className="connector">
-              GO
-            </div>
-
-            {/* LAUNCH */}
-            <div className="pipeline-card">
-
-              <span className="number">
-                04
-              </span>
-
-              <div className="pipeline-icon">
-                OK
-              </div>
-
-              <h4>
-                Launch
-              </h4>
-
-              <p>
-                Get your complete visual commerce
-                media kit.
-              </p>
-
-            </div>
-
+            ))}
           </div>
-
         </section>
 
-        {/* FOOTER */}
-        <footer>
+        {/* COMMERCE ASSETS */}
+        <section className="assets-section">
 
+          <div className="section-header-row">
+            <div>
+              <div className="panel-number">
+                04 VISUAL STUDIO
+              </div>
+
+              <h2>Commerce Assets</h2>
+
+              <p>
+                Cloudinary-powered multi-channel visual
+                representations.
+              </p>
+            </div>
+
+            <span className="asset-count">
+              {Object.keys(assets).length || 0} ASSETS
+            </span>
+          </div>
+
+          <div className="asset-grid">
+
+            {[
+              ["original", "Original", "MASTER ASSET"],
+              ["optimized", "Optimized Web", "WEB DELIVERY"],
+              ["socialSquare", "Social Square", "SOCIAL"],
+              ["socialPortrait", "Social Portrait", "SOCIAL FEED"],
+              ["story", "Story", "MOBILE STORY"],
+              ["websiteHero", "Website Hero", "STOREFRONT"],
+              ["marketplace", "Marketplace", "COMMERCE"],
+            ].map(([key, title, type]) => {
+              const url = assets[key];
+
+              return (
+                <div className="asset-card" key={key}>
+                  <div className="asset-image">
+                    {url ? (
+                      <img src={url} alt={title} />
+                    ) : image ? (
+                      <img src={image.url} alt={title} />
+                    ) : (
+                      <div className="asset-empty">
+                        V
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="asset-info">
+                    <div>
+                      <strong>{title}</strong>
+                      <span>{type}</span>
+                    </div>
+
+                    {url && (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        ↗
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <footer className="footer">
+          <strong>VISUALIQ</strong>
           <span>
-            VISUALIQ
+            AI Product Intelligence · Cloudinary Media Engine
           </span>
-
-          <span>
-            AI Product Intelligence  -  Cloudinary Media Engine
-          </span>
-
         </footer>
-
       </main>
-
     </div>
   );
 }
 
 export default App;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

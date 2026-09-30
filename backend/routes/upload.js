@@ -1,4 +1,4 @@
-ï»¿const express = require("express");
+const express = require("express");
 const multer = require("multer");
 const crypto = require("crypto");
 const axios = require("axios");
@@ -297,15 +297,25 @@ router.post(
                         analysis.available === true
                     ) {
 
+                        const normalizedProductName =
+                            analysis.productName &&
+                            !analysis.productName.toLowerCase().includes("not confidently identified")
+                                ? analysis.productName
+                                : (
+                                    analysis.subCategory ||
+                                    analysis.category ||
+                                    "Product"
+                                );
+
+                        analysis.productName = normalizedProductName;
+
                         const aiProduct =
                             {
                                 name:
-                                    analysis.productName ||
-                                    "Product",
+                                    normalizedProductName,
 
                                 productName:
-                                    analysis.productName ||
-                                    "Product",
+                                    normalizedProductName,
 
                                 category:
                                     analysis.category ||
@@ -355,15 +365,19 @@ router.post(
                     }
 
                     console.log(
-                        "=== GEMINI UNAVAILABLE â€” USING AWS REKOGNITION ==="
+                        "=== GEMINI UNAVAILABLE — USING AWS REKOGNITION ==="
                     );
 
                     try {
 
-                        const rekognitionResult =
+                        const rekognitionStart = Date.now();
+
+                          const rekognitionResult =
                             await analyzeImageWithRekognition(
                                 req.file.buffer
                             );
+
+                          console.log("AWS REKOGNITION PROCESSING TIME:", ((Date.now() - rekognitionStart) / 1000).toFixed(2), "seconds");
 
                         const identity =
                             identifyProductFromRekognition(
@@ -605,15 +619,19 @@ router.post(
                     );
 
                     console.log(
-                        "=== GEMINI ERROR â€” USING AWS REKOGNITION ==="
+                        "=== GEMINI ERROR — USING AWS REKOGNITION ==="
                     );
 
                     try {
 
-                        const rekognitionResult =
+                        const rekognitionStart = Date.now();
+
+                          const rekognitionResult =
                             await analyzeImageWithRekognition(
                                 req.file.buffer
                             );
+
+                          console.log("AWS REKOGNITION PROCESSING TIME:", ((Date.now() - rekognitionStart) / 1000).toFixed(2), "seconds");
 
                         const identity =
                             identifyProductFromRekognition(
@@ -889,6 +907,9 @@ router.get(
 );
 
 module.exports = router;
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-﻿import React, { useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import "./UploadProduct.css";
 
 const API_URL = "https://visualiq-ai-powered-product-intelligence.onrender.com"
@@ -101,7 +101,7 @@ function UploadProduct() {
 
     setAiProcessing(true);
 
-    const maxAttempts = 20;
+    const maxAttempts = 35;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -2230,6 +2230,8 @@ function UploadProduct() {
 }
 
 export default UploadProduct;
+
+
 
 
 
